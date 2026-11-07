@@ -1,0 +1,77 @@
+name: request a NuGet publish (reusable)
+
+# The package repository's side: asks iyulab/nuget-publish to push the .nupkg files the calling run
+# uploaded, and waits for the answer. Holds no NuGet credential. The caller builds and packs, uploads
+# the packages as an artifact and calls this workflow:
+#
+#   jobs:
+#     pack:
+#       ...                                 # dotnet pack, then upload-artifact name `nuget-packages`
+#       ...                                 # (retention-days: 1) with only .nupkg / .snupkg files
+#     publish:
+#       needs: pack
+#       uses: iyulab/nuget-publish/.github/workflows/request.yml@<sha> # <tag>
+#       permissions: {}
+#       secrets: inherit                    # RELEASE_BOT_PRIVATE_KEY (organization secret)
+#
+# One-time per repository: the repository is listed in nuget-publish's PUBLISHERS variable (owner,
+# workflow file, package ids), and in the release bot's GitHub App installation and the selected
+# repositories of the organization secret RELEASE_BOT_PRIVATE_KEY and variable RELEASE_BOT_CLIENT_ID.
+
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: Artifact (from the calling run) holding the .nupkg and .snupkg files.
+        required: false
+        type: string
+        default: nuget-packages
+    secrets:
+      RELEASE_BOT_PRIVATE_KEY:
+        required: true
+
+permissions: {}
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    steps:
+      - id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: nuget-publish
+          permission-actions: write
+          permission-metadata: read
+
+      - name: Start the publish workflow and wait for it
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          ARTIFACT: ${{ inputs.artifact }}
+        run: |
+          # The REST API only: a token limited to Actions and metadata cannot use the GraphQL calls behind `gh run list`.
+          central="${GITHUB_REPOSITORY_OWNER}/nuget-publish"
+          title="publish ${GITHUB_REPOSITORY} #${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"   # the run-name publish.yml gives its run
+          gh api -X POST "repos/$central/actions/workflows/publish.yml/dispatches" -f ref=main \
+            -f "inputs[source-repo]=$GITHUB_REPOSITORY" -f "inputs[run-id]=$GITHUB_RUN_ID" \
+            -f "inputs[run-attempt]=$GITHUB_RUN_ATTEMPT" -f "inputs[artifact]=$ARTIFACT"
+          id=''
+          for _ in $(seq 1 30); do
+            sleep 5
+            id=$(gh api "repos/$central/actions/workflows/publish.yml/runs?event=workflow_dispatch&per_page=30" \
+              --jq ".workflow_runs[] | select(.display_title == \"$title\") | .id" | head -n 1)
+            [ -n "$id" ] && break
+          done
+          [ -n "$id" ] || { echo 'the publish run did not start' >&2; exit 1; }
+          echo "publish run: https://github.com/$central/actions/runs/$id"
+          for _ in $(seq 1 50); do
+            read -r run_status run_conclusion < <(gh api "repos/$central/actions/runs/$id" --jq '[.status, (.conclusion // "-")] | @tsv')
+            [ "$run_status" = completed ] && break
+            sleep 30
+          done
+          echo "publish run $id: $run_status / $run_conclusion"
+          [ "$run_status" = completed ] && [ "$run_conclusion" = success ]

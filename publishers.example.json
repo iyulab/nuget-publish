@@ -1,0 +1,9 @@
+{
+  "publishers": {
+    "iyulab/example-library": {
+      "owner": "iyulab-rnd",
+      "workflow": "release.yml",
+      "packages": ["Example.Library", "Example.Library.*"]
+    }
+  }
+}
