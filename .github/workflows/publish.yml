@@ -1,5 +1,6 @@
 name: publish
-run-name: publish ${{ inputs.source-repo }} #${{ inputs.run-id }}.${{ inputs.run-attempt }}
+# Quoted on purpose: an unquoted " #" starts a YAML comment and would cut the name short. request.yml finds its run by this title.
+run-name: 'publish ${{ inputs.source-repo }} #${{ inputs.run-id }}.${{ inputs.run-attempt }}'
 
 # The one place that pushes to nuget.org. A package repository builds its .nupkg, uploads it as an
 # artifact and asks this workflow (through request.yml) to publish it; the trusted-publishing
