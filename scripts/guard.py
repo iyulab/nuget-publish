@@ -3,7 +3,7 @@
 
 The trusted-publishing policy on nuget.org covers every package of an owner, so the real
 authorization lives here: a source repository may publish only what the allowlist says, from
-the workflow the allowlist names, and only from a finished run of its own.
+a workflow the allowlist names, and only from a finished run of its own.
 
 The allowlist is the repository variable PUBLISHERS (JSON, see publishers.example.json).
 
@@ -33,6 +33,15 @@ def fail(message):
     sys.exit(1)
 
 
+def workflow_files(entry):
+    """The workflow file names an entry allows (a name or a list of names); None if malformed."""
+    value = entry.get("workflow")
+    names = [value] if isinstance(value, str) else value
+    if isinstance(names, list) and names and all(isinstance(n, str) and WORKFLOW_RE.match(n) for n in names):
+        return names
+    return None
+
+
 def load_entry(source_repo):
     if not SOURCE_RE.match(source_repo):
         fail(f"source-repo must look like iyulab/<name>, got: {source_repo!r}")
@@ -48,8 +57,8 @@ def load_entry(source_repo):
         fail(f"{source_repo} is not in the publishers allowlist")
     if entry.get("owner") not in NUGET_OWNERS:
         fail(f"{source_repo}: owner must be one of {NUGET_OWNERS}")
-    if not WORKFLOW_RE.match(entry.get("workflow", "")):
-        fail(f"{source_repo}: workflow must be a file name such as release.yml")
+    if workflow_files(entry) is None:
+        fail(f"{source_repo}: workflow must be a file name such as release.yml, or a non-empty list of them")
     packages = entry.get("packages")
     if not packages or not all(isinstance(p, str) and p for p in packages):
         fail(f"{source_repo}: packages must be a non-empty list of package ids or globs")
@@ -66,7 +75,7 @@ def plan():
     entry = load_entry(source)
     write_output("owner", entry["owner"])
     write_output("name", source.split("/", 1)[1])
-    print(f"{source} may publish {entry['packages']} as {entry['owner']} from {entry['workflow']}")
+    print(f"{source} may publish {entry['packages']} as {entry['owner']} from {', '.join(workflow_files(entry))}")
 
 
 def run():
@@ -94,9 +103,9 @@ def run():
     if head_repo.lower() != source.lower():
         fail(f"run {run_id} built code from {head_repo or 'unknown'}, not from {source}")
     path = data["path"].split("@", 1)[0]
-    expected = f".github/workflows/{entry['workflow']}"
-    if path != expected:
-        fail(f"run {run_id} came from {path}, the allowlist names {expected}")
+    expected = [f".github/workflows/{name}" for name in workflow_files(entry)]
+    if path not in expected:
+        fail(f"run {run_id} came from {path}, the allowlist names {', '.join(expected)}")
     print(f"run {run_id} of {source}: {data['event']} on {data['head_branch']} via {path}")
 
 

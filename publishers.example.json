@@ -4,6 +4,11 @@
       "owner": "iyulab-rnd",
       "workflow": "release.yml",
       "packages": ["Example.Library", "Example.Library.*"]
+    },
+    "iyulab/example-multi": {
+      "owner": "iyulab",
+      "workflow": ["release-core.yml", "release-client.yml"],
+      "packages": ["Example.Core", "Example.Client"]
     }
   }
 }

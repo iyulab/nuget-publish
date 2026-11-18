@@ -25,7 +25,7 @@ package repo                                     nuget-publish
 
 `publish.yml` refuses to push unless all of these hold:
 
-- the source repository is in the `PUBLISHERS` allowlist, and the run came from the workflow the allowlist names;
+- the source repository is in the `PUBLISHERS` allowlist, and the run came from a workflow the allowlist names (`workflow` is one file name, or a list when a repository publishes from several release workflows);
 - the run completed successfully, was not triggered by a pull request, and built code from that repository itself;
 - every file in the artifact is a `.nupkg` or `.snupkg` whose package id matches the allowlist entry.
 
